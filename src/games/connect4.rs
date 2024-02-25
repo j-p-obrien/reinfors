@@ -2,6 +2,7 @@
 ///
 /// This game is solved, and we know that Player 1 has a winning strategy. Using a minimax strategy
 /// should always guarantee a win for Player 1. Sorry Player 2!
+use crate::game_state::Player;
 
 pub enum PlayerColor {
     Red,
@@ -9,7 +10,9 @@ pub enum PlayerColor {
     Empty,
 }
 
+#[allow(dead_code)]
 pub struct Connect4 {
     board: [[u8; 6]; 2],
-    player1_piece: PlayerColor,
+    current_player: Player,
+    player1_color: PlayerColor,
 }

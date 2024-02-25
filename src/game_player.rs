@@ -1,5 +1,5 @@
 use crate::{evaluator::*, game_state::*, strategy::*};
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
 pub struct GamePlayer<G, E, S>
@@ -59,12 +59,16 @@ where
     where
         G: Display,
         G: Interactive,
+        E: Debug,
     {
         if player_is == 1 {
             println!("Board positions are as follows:\n8|7|6\n5|4|3\n2|1|0");
             println!("Press a number between 0 and 8 inclusive and hit enter.");
-            if let Some(action) = self.state.get_user_input() {
-                if let Ok(_) = self.state.apply_mut(&action) {}
+            while let Some(action) = self.state.get_user_input() {
+                match self.state.apply_mut(&action) {
+                    Ok(_) => break,
+                    Err(_) => println!("Try again."),
+                }
             }
             print!("{}", self.state);
         }
@@ -73,6 +77,7 @@ where
             let best_action = self
                 .strategy
                 .best_action(&self.state, &mut self.evaluator)?;
+            //dbg!(&self.evaluator);
             self.state.apply_mut(&best_action)?;
             print!("{}", self.state);
             if let Some(outcome) = self.state.outcome() {
@@ -80,8 +85,11 @@ where
             }
             println!("Board positions are as follows:\n8|7|6\n5|4|3\n2|1|0");
             println!("Press a number between 0 and 8 inclusive and hit enter.");
-            if let Some(action) = self.state.get_user_input() {
-                if let Ok(_) = self.state.apply_mut(&action) {}
+            while let Some(action) = self.state.get_user_input() {
+                match self.state.apply_mut(&action) {
+                    Ok(_) => break,
+                    Err(_) => println!("Try again."),
+                }
             }
             print!("{}", self.state);
             if let Some(outcome) = self.state.outcome() {

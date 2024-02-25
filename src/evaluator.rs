@@ -57,6 +57,7 @@ where
 /// 3. Otherwise, there are only losing moves available for the current player. Ideally, we never reach
 /// this part of the function because this would be identified earlier when we called DynamicGameState::outcome();
 /// however, if this is reached we return WinDrawOutcome::Win(last player).
+#[derive(Debug)]
 pub struct EndStateEvaluator<G>
 where
     G: GameState,

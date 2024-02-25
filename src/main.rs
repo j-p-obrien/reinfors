@@ -10,7 +10,7 @@ fn main() {
     let strategy = MinMax;
     let evaluator = EndStateEvaluator::new();
     let mut player = GamePlayer::new(state, evaluator, strategy);
-    match player.play_interactive(1) {
+    match player.play_display() {
         Ok(WinDrawOutcome::Win(player)) => println!("{} wins!", player),
         Ok(WinDrawOutcome::Draw) => println!("The game ended in a draw."),
         Err(err) => println!("{:?}", err),

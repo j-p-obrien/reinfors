@@ -163,17 +163,24 @@ impl BoardState {
 
     /// Mutably applies the given action. Does not check legality of the given action.
     pub fn apply_mut_unchecked(&mut self, action: &Action) {
-        // Subtract 1 because players are 1-indexed
         let current_player = self.current_player.player_index();
         self.board[current_player] |= action.0;
         self.current_player.next_mut();
     }
 
     pub fn outcome(&self) -> Option<WinDrawOutcome<Self>> {
-        if self.is_draw() {
+        /*if self.is_draw() {
             Some(WinDrawOutcome::Draw)
         } else {
             self.winner()
+        }*/
+
+        if let Some(winner) = self.winner() {
+            Some(winner)
+        } else if self.is_draw() {
+            Some(WinDrawOutcome::Draw)
+        } else {
+            None
         }
     }
 

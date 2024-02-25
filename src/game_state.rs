@@ -25,6 +25,42 @@ where
     Arbitrary(&'static str),
 }
 
+pub type GameResult<T, G> = Result<T, GameError<G>>;
+
+pub trait UnsafeGameState: Sized {
+    type Action;
+
+    type Player;
+
+    type Outcome;
+
+    /// This function assumes that both the given action is legal and that the game is not in a
+    /// terminal state. This allows performance gains when needed, but this makes the function
+    /// unsafe as a result, as it is up to the caller to check invariants before proceeding. It is
+    /// important to keep in mind that this function may return an "invalid" UnsafeGameState in the
+    /// sense that it would not be valid to apply an Action to a game that has finished, or to
+    /// apply an illegal action.
+    unsafe fn unsafe_apply(&self, action: &Self::Action) -> Self;
+
+    /// Returns true if the given Action is legal in the given State; false otherwise.
+    fn is_legal(&self, action: &Self::Action) -> bool;
+
+    /// Returns Some(Outcome) if the game is in a terminal state; otherwise None. If this function
+    /// returns Some, then the game is over and you should not try to apply any actions to it.
+    fn outcome(&self) -> Option<Self::Outcome>;
+
+    /// Returns the current player of the game. Useful for implementing strategies and evaluators.
+    fn current_player(&self) -> Self::Player;
+
+    /// The same as unsafe_apply, but applies the action mutably. Again, this function assumes
+    /// the given action is legal and the Game is not in a terminal state. It is important to keep
+    /// in mind that after applying the Action, the underlying State may be "invalid" in some
+    /// sense, and it is up to the caller to keep any invariants in mind.
+    unsafe fn unsafe_apply_mut(&mut self, action: &Self::Action) {
+        unsafe { *self = self.unsafe_apply(action) }
+    }
+}
+
 pub enum ApplyResult<G>
 where
     G: DynamicGameState,
@@ -33,8 +69,6 @@ where
     State(G),
     Outcome(G::Outcome),
 }
-
-pub type GameResult<T, G> = Result<T, GameError<G>>;
 
 /// Trait for Games where the available actions may not be known at compile-time or may be too
 /// numerous to list e.g. in poker an action might be Bet(Amount) where Amount is a usize. In this

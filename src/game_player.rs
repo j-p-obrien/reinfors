@@ -1,21 +1,29 @@
-use crate::{evaluator::*, game_state::*, strategy::*};
+use crate::{evaluator::Evaluator, game_state::*, strategy::Strategy};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
 pub struct GamePlayer<G, E, S>
 where
-    G: DynamicGameState,
+    G: GameState,
     E: Evaluator<G>,
     S: Strategy<G, E>,
 {
-    state: G,
-    evaluator: E,
-    strategy: S,
+    pub state: G,
+    pub evaluator: E,
+    pub strategy: S,
 }
 
 impl<G, E, S> GamePlayer<G, E, S>
 where
-    G: DynamicGameState,
+    G: GameState,
+    E: Evaluator<G>,
+    S: Strategy<G, E>,
+{
+}
+
+impl<G, E, S> GamePlayer<G, E, S>
+where
+    G: GameState,
     E: Evaluator<G>,
     S: Strategy<G, E>,
 {
@@ -27,74 +35,89 @@ where
         }
     }
 
-    pub fn play(&mut self) -> GameResult<G::Outcome, G> {
+    pub fn state(&self) -> &G {
+        &self.state
+    }
+
+    pub fn evaluator(&mut self) -> &mut E {
+        &mut self.evaluator
+    }
+
+    pub fn strategy(&mut self) -> &mut S {
+        &mut self.strategy
+    }
+
+    pub fn into_constituents(self) -> (G, E, S) {
+        (self.state, self.evaluator, self.strategy)
+    }
+
+    pub fn play(&mut self) -> (G, G::Outcome) {
         loop {
-            if let Some(outcome) = self.state.outcome() {
-                return Ok(outcome);
+            let best_action = self.strategy.choose(&self.state, &mut self.evaluator);
+            match self.state.apply(&best_action) {
+                Ongoing(new_state) => {
+                    self.state = new_state;
+                }
+                Finished(new_state, outcome) => return (new_state, outcome),
             }
-            let best_action = self
-                .strategy
-                .best_action(&self.state, &mut self.evaluator)?;
-            self.state.apply_mut(&best_action)?
         }
     }
 
-    pub fn play_display(&mut self) -> GameResult<G::Outcome, G>
+    pub fn play_display(&mut self) -> (G, G::Outcome)
     where
         G: Display,
     {
         loop {
             print!("{}", self.state);
-            if let Some(outcome) = self.state.outcome() {
-                return Ok(outcome);
+            let best_action = self.strategy.choose(&self.state, &mut self.evaluator);
+            match self.state.apply(&best_action) {
+                Ongoing(new_state) => {
+                    self.state = new_state;
+                }
+                Finished(new_state, outcome) => {
+                    print!("{}", new_state);
+                    return (new_state, outcome);
+                }
             }
-            let best_action = self
-                .strategy
-                .best_action(&self.state, &mut self.evaluator)?;
-            self.state.apply_mut(&best_action)?
         }
     }
 
-    pub fn play_interactive(&mut self, player_is: usize) -> GameResult<G::Outcome, G>
+    pub fn play_interactive(&mut self, player_starts: bool) -> (G, G::Outcome)
     where
-        G: Display,
-        G: Interactive,
-        E: Debug,
+        G: Display + Interactive,
     {
-        if player_is == 1 {
-            println!("Board positions are as follows:\n8|7|6\n5|4|3\n2|1|0");
-            println!("Press a number between 0 and 8 inclusive and hit enter.");
-            while let Some(action) = self.state.get_user_input() {
-                match self.state.apply_mut(&action) {
-                    Ok(_) => break,
-                    Err(_) => println!("Try again."),
+        print!("{}", self.state);
+        if player_starts {
+            let action = self.state.get_user_input();
+            match self.state.apply(&action) {
+                Ongoing(new_state) => {
+                    self.state = new_state;
                 }
+                Finished(new_state, outcome) => return (new_state, outcome),
             }
             print!("{}", self.state);
         }
         loop {
-            println!("Computer going...");
-            let best_action = self
-                .strategy
-                .best_action(&self.state, &mut self.evaluator)?;
-            //dbg!(&self.evaluator);
-            self.state.apply_mut(&best_action)?;
-            print!("{}", self.state);
-            if let Some(outcome) = self.state.outcome() {
-                return Ok(outcome);
-            }
-            println!("Board positions are as follows:\n8|7|6\n5|4|3\n2|1|0");
-            println!("Press a number between 0 and 8 inclusive and hit enter.");
-            while let Some(action) = self.state.get_user_input() {
-                match self.state.apply_mut(&action) {
-                    Ok(_) => break,
-                    Err(_) => println!("Try again."),
+            let best_action = self.strategy.choose(&self.state, &mut self.evaluator);
+            match self.state.apply(&best_action) {
+                Ongoing(new_state) => self.state = new_state,
+                Finished(new_state, outcome) => {
+                    print!("{}", new_state);
+                    return (new_state, outcome);
                 }
             }
             print!("{}", self.state);
-            if let Some(outcome) = self.state.outcome() {
-                return Ok(outcome);
+            let action = self.state.get_user_input();
+            match self.state.apply(&action) {
+                Ongoing(new_state) => {
+                    self.state = new_state;
+                }
+                Finished(new_state, outcome) => {
+                    print!("{}", new_state);
+                    return (new_state, outcome);
+                }
             }
+            print!("{}", self.state);
         }
     }
 }

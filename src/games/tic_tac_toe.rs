@@ -1,8 +1,11 @@
 use crate::game_state::{
-    DynamicGameState, GameError, GameResult, GameState, Interactive, Player, WinDrawOutcome,
+    outcome::WinDraw::{self, *},
+    player::TwoPlayer,
+    ApplyResult::{self, *},
+    EnumerableActions, GameState, Interactive,
 };
 use std::{
-    fmt::Display,
+    fmt::{Debug, Display},
     io::{self, BufRead},
 };
 
@@ -17,12 +20,18 @@ use std::{
 /// necessary for this. Board represents the whole board, Square is just a single spot on the
 /// Board.
 type Board = u16;
-type Position = u16;
+type Square = u16;
 
 /// Represents a move. A single 1 bit denotes which position to move to. Note that only the 9
 /// rightmost logical bits may be 1, since we have only 9 squares.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Action(Position);
+#[derive(Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub struct Action(pub(super) Square);
+
+impl Debug for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Action").field(&self.0.ilog2()).finish()
+    }
+}
 
 /// Used to represent the pieces on the board.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -36,16 +45,16 @@ pub enum Piece {
 /// The state of the board. player1 and player2 encode the position for Player 1 and Player 2,
 /// respectively. to_move encodes which player's turn it is. player1_piece encodes whether player
 /// 1 is X's or O's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct BoardState {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct TicTacToe {
     board: [Board; 2],
-    current_player: Player,
+    current_player: TwoPlayer,
     player1_piece: Piece,
 }
 
 /// This encodes the winning positions. If A is the position of a player, then the player is in
 /// a winning position only if (A & WINNING_POSITIONS[i]) == WINNING_POSITIONS[i] for some i.
-static WINNING_POSITIONS: [Board; 8] = [
+pub(super) static WINNING_POSITIONS: [Board; 8] = [
     // Top row
     0b111_000_000,
     // Middle row
@@ -66,7 +75,7 @@ static WINNING_POSITIONS: [Board; 8] = [
 
 /// Array of all potential moves that can be made. These are all u16's with a single 1 bit i.e.
 /// Move(2^k) represents moving to position k on the board.
-pub static ALL_MOVES: [Action; 9] = [
+pub static ALL_ACTIONS: [Action; 9] = [
     Action(1),
     Action(2),
     Action(4),
@@ -79,9 +88,9 @@ pub static ALL_MOVES: [Action; 9] = [
 ];
 
 /// If all of these positions are occupied and there is no winner yet then the game is a draw.
-/// If A and B are the positions of players A and B then the game is a draw if and only if:
-/// (A + B) == DRAW
-const DRAW: Board = 0b111_111_111;
+/// If A and B are the positions of players A and B then the game is a draw only if:
+/// (A | B) == DRAW
+pub(super) const FULL: Board = 0b111_111_111;
 
 impl Piece {
     pub fn flip(&self) -> Piece {
@@ -104,7 +113,7 @@ impl Display for Piece {
     }
 }
 
-impl Display for BoardState {
+impl Display for TicTacToe {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let board = self.pieces();
         write!(
@@ -123,17 +132,7 @@ impl Display for BoardState {
     }
 }
 
-impl Default for BoardState {
-    fn default() -> Self {
-        Self {
-            board: [0, 0],
-            current_player: Player::new(2),
-            player1_piece: Default::default(),
-        }
-    }
-}
-
-impl BoardState {
+impl TicTacToe {
     /// Starts a new Game with the given piece for Player 1.
     pub fn new(player1_piece: Piece) -> Self {
         Self {
@@ -148,11 +147,10 @@ impl BoardState {
         (action.0 & filled_positions) == 0
     }
 
-    /// Applies the given action and returns the resulting BoardState. Does not check legality of
-    /// the given action.
-    pub fn apply_unchecked(&self, action: &Action) -> Self {
-        let current_player = self.current_player.player_index();
-        let mut board = self.board.clone();
+    /// Applies the given action and returns the resulting BoardState.
+    pub fn apply(&self, action: &Action) -> Self {
+        let current_player = self.current_player.index();
+        let mut board = self.board;
         board[current_player] |= action.0;
         Self {
             board,
@@ -161,52 +159,45 @@ impl BoardState {
         }
     }
 
-    /// Mutably applies the given action. Does not check legality of the given action.
-    pub fn apply_mut_unchecked(&mut self, action: &Action) {
-        let current_player = self.current_player.player_index();
+    /// Mutably applies the given action.
+    pub fn apply_mut(&mut self, action: &Action) {
+        let current_player = self.current_player.index();
         self.board[current_player] |= action.0;
         self.current_player.next_mut();
     }
 
-    pub fn outcome(&self) -> Option<WinDrawOutcome<Self>> {
-        /*if self.is_draw() {
-            Some(WinDrawOutcome::Draw)
-        } else {
-            self.winner()
-        }*/
-
+    pub fn outcome(&self) -> Option<WinDraw<Self>> {
         if let Some(winner) = self.winner() {
             Some(winner)
-        } else if self.is_draw() {
-            Some(WinDrawOutcome::Draw)
+        } else if self.is_full() {
+            Some(Draw)
         } else {
             None
         }
     }
 
     /// If there is a winner, returns Some(Win(Player)); otherwise None.
-    pub fn winner(&self) -> Option<WinDrawOutcome<Self>> {
+    pub fn winner(&self) -> Option<WinDraw<Self>> {
         let last_player = self.current_player.last();
+        // We only need to check if the last player won in tic-tac-toe.
         if WINNING_POSITIONS
             .iter()
-            .any(|&pos| pos & self.board[last_player.player_index()] == pos)
+            .any(|&pos| pos & self.board[last_player.index()] == pos)
         {
-            Some(WinDrawOutcome::Win(last_player))
-        } else if WINNING_POSITIONS
-            .iter()
-            .any(|&pos| pos & self.board[self.current_player.player_index()] == pos)
-        {
-            Some(WinDrawOutcome::Win(self.current_player))
+            Some(Win(last_player))
         } else {
             None
         }
     }
 
-    /// Returns true if the game is a draw; false otherwise.
-    pub fn is_draw(&self) -> bool {
-        self.board[0] + self.board[1] == DRAW
+    /// Returns true if the board is full; false otherwise. If there is no winner and the Board is
+    /// full, then the game is a draw.
+    pub fn is_full(&self) -> bool {
+        (self.board[0] | self.board[1]) == FULL
     }
 
+    /// Returns an array where array[i] if the Piece that occupies that position. The index of a
+    /// position is as described in the documentation for Board.
     fn pieces(&self) -> [Piece; 9] {
         let mut buffer = [Piece::Empty; 9];
         buffer.iter_mut().enumerate().for_each(|(i, piece)| {
@@ -220,66 +211,50 @@ impl BoardState {
     }
 
     #[inline]
-    fn player_occupies(&self, player: usize, i: usize) -> bool {
-        (self.board[player as usize] >> i) & 1 == 1
+    fn player_occupies(&self, player_index: usize, i: usize) -> bool {
+        (self.board[player_index] >> i) & 1 == 1
     }
 }
 
-impl DynamicGameState for BoardState {
+impl GameState for TicTacToe {
     type Action = Action;
 
-    type Player = Player;
+    type Player = TwoPlayer;
 
-    type Outcome = WinDrawOutcome<Self>;
+    type Outcome = WinDraw<Self>;
 
-    fn apply(&self, action: &Self::Action) -> GameResult<Self, Self> {
-        if self.is_legal(action) {
-            Ok(self.apply_unchecked(action))
+    fn apply(&self, action: &Self::Action) -> ApplyResult<Self> {
+        let next_state = self.apply(action);
+        if let Some(outcome) = next_state.outcome() {
+            Finished(next_state, outcome)
         } else {
-            Err(GameError::IllegalAction(self.clone(), action.clone()))
+            Ongoing(next_state)
         }
     }
 
-    fn outcome(&self) -> Option<Self::Outcome> {
-        self.outcome()
+    fn legal_actions(&self) -> impl Iterator<Item = &Self::Action> {
+        ALL_ACTIONS.iter().filter(|&action| self.is_legal(action))
     }
 
     fn current_player(&self) -> Self::Player {
         self.current_player
     }
+}
 
-    fn is_legal(&self, action: &Self::Action) -> bool {
-        self.is_legal(action)
-    }
-
-    fn apply_mut(&mut self, action: &Self::Action) -> GameResult<(), Self> {
-        if self.is_legal(action) {
-            self.apply_mut_unchecked(action);
-            Ok(())
-        } else {
-            Err(GameError::IllegalAction(self.clone(), action.clone()))
-        }
-    }
-
-    fn is_finished(&self) -> bool {
-        self.outcome().is_some()
+impl EnumerableActions for TicTacToe {
+    fn action_index(&self, action: &Self::Action) -> usize {
+        action.0.ilog2() as usize
     }
 }
 
-impl GameState for BoardState {
-    fn actions(&self) -> &'static [Self::Action] {
-        &ALL_MOVES
-    }
-}
-
-impl Interactive for BoardState {
-    fn get_user_input(&self) -> Option<Self::Action> {
+impl Interactive for TicTacToe {
+    fn get_user_input(&self) -> Self::Action {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             if let Ok(line) = line {
                 if let Ok(num) = line.parse::<u16>() {
                     if num <= 8 {
-                        return Some(Action(1 << num));
+                        return Action(1 << num);
                     } else {
                         println!("Try again");
                     }
@@ -290,7 +265,7 @@ impl Interactive for BoardState {
                 println!("Try again");
             }
         }
-        None
+        unreachable!()
     }
 }
 
@@ -300,13 +275,13 @@ mod tests {
 
     #[test]
     fn test1() {
-        let mut board1 = BoardState::default();
-        board1.apply_mut_unchecked(&Action(1));
-        board1.apply_mut_unchecked(&Action(8));
-        board1.apply_mut_unchecked(&Action(2));
-        board1.apply_mut_unchecked(&Action(16));
-        board1.apply_mut_unchecked(&Action(4));
+        let mut board1 = TicTacToe::default();
+        board1.apply_mut(&Action(1));
+        board1.apply_mut(&Action(8));
+        board1.apply_mut(&Action(2));
+        board1.apply_mut(&Action(16));
+        board1.apply_mut(&Action(4));
 
-        assert_eq!(board1.outcome(), Some(WinDrawOutcome::Win(Player::new(2))))
+        assert_eq!(board1.outcome(), Some(Win(TwoPlayer::default())))
     }
 }

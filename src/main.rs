@@ -15,7 +15,7 @@ fn main() {
     let evaluator = MaskedEvaluator::new();
     let strategy = GreedyStrategy;
     let mut game_player = GamePlayer::new(state, evaluator, strategy);
-    let (final_state, outcome) = game_player.play_display();
+    let (final_state, outcome) = game_player.play_interactive(true);
     match outcome {
         WinDraw::Win(player) => println!("{} wins!", player),
         WinDraw::Draw => println!("The game ended in a draw."),

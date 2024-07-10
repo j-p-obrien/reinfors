@@ -47,9 +47,7 @@ pub trait GameState: Sized {
 /// chess, checkers, tic-tac-toe, Connect 4 etc. where there is a fixed set of actions known at
 /// compile-time.
 pub trait EnumerableActions: GameState {
-    /// Returns the index of the given action in the slice returned by actions() i.e. we should
-    /// always have:
-    /// actions()[action_index(action)] == *action
+    /// Returns the index of the given action. This is useful for evaluators
     fn action_index(&self, action: &Self::Action) -> usize;
 }
 
@@ -117,6 +115,10 @@ pub trait PartialInformation: GameState {
     fn view_as(&self, player: &Self::Player) -> Self::PlayerView;
 }
 
+/// Used to play interactive games.
+///
+/// The function should only return legal actions. If the user enters something that would be
+/// illegal or nonsensical, this function should handle that.
 pub trait Interactive: GameState {
     fn get_user_input(&self) -> Self::Action;
 }

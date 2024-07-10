@@ -47,8 +47,8 @@ impl<'a, A> Deref for ActionRef<'a, A> {
 }
 
 /// Takes an Evaluator whose Evaluation impl's PartialOrd and returns the action that has the highest
-/// Evaluation. This strategy is optimal for two player finite games w perfect information; the
-/// only catch is computing the evaluations ;).
+/// Evaluation. This strategy is optimal for zero sum two player finite games w perfect
+/// information; the only catch is computing the evaluations ;).
 pub struct GreedyStrategy;
 
 impl<G, E> Strategy<G, E> for GreedyStrategy

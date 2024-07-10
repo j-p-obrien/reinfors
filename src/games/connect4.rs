@@ -1,25 +1,13 @@
-use crate::game_state::outcome::WinDraw::{self, *};
+use std::ops::Index;
+
 /// An implementation of Connect 4.
 ///
-/// This game is solved, and we know that Player 1 has a winning strategy. Using a minimax strategy
-/// should always guarantee a win for Player 1. Sorry Player 2!
+/// This game is solved, and we know that Player 1 has a winning strategy. Using a minimax
+/// evaluator and greedy strategy should always guarantee a win for Player 1. Sorry Player 2!
+use crate::game_state::outcome::WinDraw;
 use crate::game_state::player::TwoPlayer;
-use crate::game_state::ApplyResult::{self, *};
+use crate::game_state::ApplyResult;
 use crate::game_state::GameState;
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum PlayerColor {
-    Red,
-    Black,
-    Empty,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Connect4 {
-    board: [[u8; BOARD_HEIGHT]; 2],
-    current_player: TwoPlayer,
-    player1_color: PlayerColor,
-}
 
 const BOARD_WIDTH: usize = 7;
 const BOARD_HEIGHT: usize = 6;
@@ -27,7 +15,26 @@ const FULL_ROW: u8 = 0b1111111;
 const FIRST_FOUR: u8 = 0b1111;
 
 type Column = u8;
-type Row = usize;
+type RowIdx = u8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct BitBoard([u8; BOARD_HEIGHT]);
+
+pub struct BoardRow(u8);
+
+impl Index<RowIdx> for BitBoard {
+    type Output = BoardRow;
+
+    fn index(&self, index: RowIdx) -> &Self::Output {
+        todo!()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+pub struct Connect4 {
+    board: [BitBoard; 2],
+    current_player: TwoPlayer,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Action(Column);
@@ -43,12 +50,8 @@ pub static ALL_MOVES: [Action; BOARD_WIDTH] = [
 ];
 
 impl Connect4 {
-    pub fn new(player1_color: PlayerColor) -> Self {
-        Self {
-            board: [[0; BOARD_HEIGHT]; 2],
-            player1_color,
-            current_player: Default::default(),
-        }
+    pub fn new() -> Self {
+        Default::default()
     }
 
     pub fn current_player(&self) -> TwoPlayer {
@@ -91,9 +94,9 @@ impl Connect4 {
             | self.col_winner(row, action, board)
             | self.diag_winner(row, action, board)
         {
-            Some(Win(last_player))
+            Some(WinDraw::Win(last_player))
         } else if self.top_row_full() {
-            Some(Draw)
+            Some(WinDraw::Draw)
         } else {
             None
         }
@@ -130,7 +133,6 @@ impl Connect4 {
             Self {
                 board: new_board,
                 current_player: next_player,
-                player1_color: self.player1_color,
             },
             row,
         )
@@ -147,9 +149,9 @@ impl GameState for Connect4 {
     fn apply(&self, action: &Self::Action) -> ApplyResult<Self> {
         let (new_state, row) = self.apply_action(action);
         if let Some(outcome) = new_state.outcome(row, action) {
-            Finished(new_state, outcome)
+            ApplyResult::Finished(new_state, outcome)
         } else {
-            Ongoing(new_state)
+            ApplyResult::Ongoing(new_state)
         }
     }
 
